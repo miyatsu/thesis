@@ -28,6 +28,9 @@ void init(void)
 		perror("event_config_new() Error!\n");
 		exit(-1);
 	}
+	/**	Use avoid method to avoid epoll function.
+	 *	Due to unsupported local file descreptor on epoll.
+	 * */
 	event_config_avoid_method(cfg, "epoll");
 	g_base = event_base_new_with_config(cfg);
 	if ( !g_base )
