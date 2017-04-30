@@ -1,3 +1,11 @@
+/**
+ * This file is published under no specific lisence, you can use this file
+ * in any usage now.
+ *
+ * Copyright (C) 2017 Ding Tao, Hunan Institute of Engineering All right reserved.
+ *
+ * */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
