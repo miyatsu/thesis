@@ -18,7 +18,7 @@
 
 void config_init(const char * file)
 {
-	int config_file_fd, n, pos, start;
+	int config_file_fd, n, total, pos, start;
 	char buff[CONFIG_BUFF_SIZE];
 	if ( !file )
 	{
@@ -32,15 +32,18 @@ void config_init(const char * file)
 		exit(-1);
 	}
 
-	while ( ( n = read(config_file_fd, buff, CONFIG_BUFF_SIZE-1) ) > 0 )
+	total = 0;
+	pos = 0;
+	while ( ( n = read(config_file_fd, &buff[total], CONFIG_BUFF_SIZE-1) ) > 0 )
 	{
+		total += n;
 		buff[n] = '\0';
-		for ( pos = 0; pos < n && buff[pos] != '\0'; ++pos )
+		for ( ; pos < total && buff[pos] != '\0'; ++pos )
 		{
 			if ( buff[pos] == '#' )	/* Conment in one line. */
 			{
 				/* Skip current line. */
-				while ( pos < n && buff[pos] != '\0' )
+				while ( pos < total && buff[pos] != '\0' )
 				{
 					if ( buff[pos] == '\n' )
 					{
@@ -53,7 +56,7 @@ void config_init(const char * file)
 			{
 				pos += 6;
 				start = pos;
-				while ( pos < n && buff[pos] != '\0' && buff[pos] != '\n' )
+				while ( pos < total && buff[pos] != '\0' && buff[pos] != '\n' )
 				{
 					++pos;
 				}
@@ -63,7 +66,7 @@ void config_init(const char * file)
 			{
 				pos += 8;
 				start = pos;
-				while ( pos < n && buff[pos] != '\0' && buff[pos] != '\n' )
+				while ( pos < total && buff[pos] != '\0' && buff[pos] != '\n' )
 				{
 					++pos;
 				}
@@ -73,7 +76,7 @@ void config_init(const char * file)
 			{
 				pos += 11;
 				start = pos;
-				while ( pos < n && buff[pos] != '\0' && buff[pos] != '\n' )
+				while ( pos < total && buff[pos] != '\0' && buff[pos] != '\n' )
 				{
 					++pos;
 				}
