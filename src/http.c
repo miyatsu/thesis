@@ -14,11 +14,6 @@
 void http_init(char * buff, int len)
 {
 	char addr[16] = {'\0'};
-	for ( int i = 0; i < len; ++i )
-	{
-		addr[i] = buff[i];
-		printf("%c", addr[i]);
-	}
 	if ( inet_pton(AF_INET, (const char*)addr, &g_remote_addr.sin_addr) != 1 )
 	{
 		perror("Wrong ip address!\n");
