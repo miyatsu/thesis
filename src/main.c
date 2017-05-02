@@ -18,7 +18,7 @@
 char g_buffer[GLOBAL_BUFFER_SIZE] = {'\0'};
 struct event_base * g_base = NULL;
 struct evconnlistener * g_listener = NULL;
-struct sockaddr_in g_addr;
+struct sockaddr_in g_local_addr, g_remote_addr;
 
 void init(void)
 {

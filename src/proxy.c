@@ -46,7 +46,7 @@ void accept_cb(struct evconnlistener * listener, evutil_socket_t sock, struct so
 
 void proxy_init()
 {
-	g_listener = evconnlistener_new_bind(g_base, accept_cb, NULL, LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE | LEV_OPT_THREADSAFE, -1, (struct sockaddr*)&g_addr, sizeof(struct sockaddr_in));
+	g_listener = evconnlistener_new_bind(g_base, accept_cb, NULL, LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE | LEV_OPT_THREADSAFE, -1, (struct sockaddr*)&g_local_addr, sizeof(struct sockaddr_in));
 	if ( !g_listener )
 	{
 		LOG(LOG_LEVEL_FATAL, "Initial g_listener failed.");
