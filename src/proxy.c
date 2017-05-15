@@ -16,14 +16,67 @@
 #include "proxy.h"
 #include "global.h"
 
+void drained_write_cb(struct bufferevent * bev, void * ptr);
+void read_cb(struct bufferevent * bev, void * ptr);
+
+void close_on_finished_writecb(struct bufferevent *bev, void *ctx)
+{
+	struct evbuffer *b = bufferevent_get_output(bev);
+	if ( evbuffer_get_length(b) == 0 )
+	{
+		bufferevent_free(bev);
+	}
+}
+
 void event_cb(struct bufferevent * bev, short events, void * ptr)
 {
-	;
+	struct bufferevent *partner = ptr;
+
+	if ( events & ( BEV_EVENT_EOF | BEV_EVENT_ERROR ) )
+	{
+		if ( events & BEV_EVENT_ERROR )
+		{
+			perror("connection error");
+			exit(-1);
+		}
+
+		if ( partner )
+		{
+			/* Flush all pending data */
+			read_cb(bev, ptr);
+
+			if ( evbuffer_get_length( bufferevent_get_output(partner) ) )
+			{
+				/* We still have to flush data from the other
+				** side, but when that's done, close the other
+				** side.
+				*/
+				bufferevent_setcb(partner, NULL, close_on_finished_writecb, event_cb, NULL);
+				bufferevent_disable(partner, EV_READ);
+			}
+			else
+			{
+				/* We have nothing left to say to the other
+				** side; close it. */
+				bufferevent_free(partner);
+			}
+		}
+		bufferevent_free(bev);
+	}
 }
 
 void drained_write_cb(struct bufferevent * bev, void * ptr)
 {
-	;
+	struct bufferevent *partner = ptr;
+
+	/* We were choking the other side until we drained our outbuf a bit.
+	** Now it seems drained. */
+	bufferevent_setcb(bev, read_cb, NULL, event_cb, partner);
+	bufferevent_setwatermark(bev, EV_WRITE, 0, 0);
+	if ( partner )
+	{
+		bufferevent_enable(partner, EV_READ);
+	}
 }
 
 void read_cb(struct bufferevent * bev, void * ptr)
