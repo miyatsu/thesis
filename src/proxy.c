@@ -16,18 +16,43 @@
 #include "proxy.h"
 #include "global.h"
 
+void event_cb(struct bufferevent * bev, short events, void * ptr)
+{
+	;
+}
+
+void drained_write_cb(struct bufferevent * bev, void * ptr)
+{
+	;
+}
+
 void read_cb(struct bufferevent * bev, void * ptr)
 {
-	printf("read_cb called.\n");
-	;
+	struct bufferevent * partner = (struct bufferevent *)ptr;
+	struct evbuffer *src, *dst;
+	size_t len;
+	src = bufferevent_get_input(bev);
+	len = evbuffer_get_length(src);
+	if ( !partner )
+	{
+		evbuffer_drain(src, len);
+		return ;
+	}
+	dst = bufferevent_get_output(partner);
+	evbuffer_add_buffer(dst, src);
+
+	if ( evbuffer_get_length(dst) >= 4096 )
+	{
+		/* We're giving the other side data faster than it can
+		** pass it on.  Stop reading here until we have drained the
+		** other side to MAX_OUTPUT/2 bytes. */
+		bufferevent_setcb(partner, read_cb, drained_write_cb, event_cb, bev);
+		bufferevent_setwatermark(partner, EV_WRITE, 2048, 4096);
+		bufferevent_disable(bev, EV_READ);
+	}
 }
 
 void write_cb(struct bufferevent * bev, void * prt)
-{
-	;
-}
-
-void event_cb(struct bufferevent * bev, short events, void * ptr)
 {
 	;
 }
@@ -53,11 +78,12 @@ void accept_cb(struct evconnlistener * listener, evutil_socket_t sock, struct so
 	if ( bufferevent_socket_connect(bev_out, (struct sockaddr * )&g_remote_addr, sizeof(struct sockaddr_in)) < 0 )
 	{
 		/* Error */
+		perror("Connect to remote server error.");
 		exit(-1);
 	}
 
-	bufferevent_setcb(bev_in, read_cb, write_cb, event_cb, bev_out);
-	bufferevent_setcb(bev_out, read_cb, write_cb, event_cb, bev_in);
+	bufferevent_setcb(bev_in, read_cb, NULL, event_cb, bev_out);
+	bufferevent_setcb(bev_out, read_cb, NULL, event_cb, bev_in);
 
 	bufferevent_enable(bev_in, EV_READ | EV_WRITE);
 	bufferevent_enable(bev_out, EV_READ | EV_WRITE);
