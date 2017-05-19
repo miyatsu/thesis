@@ -29,7 +29,7 @@ void http_init(char * buff, int len)
 	g_local_addr.sin_addr.s_addr = htonl(0);
 	g_local_addr.sin_port = htons(8080);
 
-	memset(&g_remote_addr, 0, sizeof(struct sockaddr_in));
+	//memset(&g_remote_addr, 0, sizeof(struct sockaddr_in));
 	g_remote_addr.sin_family = AF_INET;
 	g_remote_addr.sin_port = htons(80);
 
