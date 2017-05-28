@@ -61,7 +61,7 @@ void log_cb(int fd, short what, void * arg)
 	}
 	if ( what & EV_TIMEOUT )
 	{
-		/* If this event din't triger when timeout, reset current event. */
+		/* If this event didn't triger when timeout, reset current event. */
 		event_base_once(g_base, g_log_fd, EV_WRITE, log_cb, arg, &g_timeout);
 		return ;
 	}
