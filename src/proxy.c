@@ -1,10 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <unistd.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include <event2/event.h>
 #include <event2/buffer.h>
@@ -14,106 +19,94 @@
 
 #include "log.h"
 #include "proxy.h"
+#include "cache.h"
 #include "global.h"
 
-void drained_write_cb(struct bufferevent * bev, void * ptr);
-void read_cb(struct bufferevent * bev, void * ptr);
+void read_client_cb(struct bufferevent *, void *);
+void event_client_cb(struct bufferevent *, short, void *);
 
-void close_on_finished_writecb(struct bufferevent *bev, void *ctx)
+void cache_check(struct bufferevent * bev, char * str)
 {
-	struct evbuffer *b = bufferevent_get_output(bev);
-	if ( evbuffer_get_length(b) == 0 )
+	struct evbuffer * evbuff = bufferevent_get_input(bev);
+	size_t request_line_len;
+	char * request_line = evbuffer_readln(evbuff, &request_line_len, EVBUFFER_EOL_CRLF_STRICT);
+
+	/* When use evbuffer_readln, the first line will be remove from evbuffer, so we just simplly add it back. */
+	evbuffer_prepend(evbuff, "\r\n", 2);
+	evbuffer_prepend(evbuff, request_line, request_line_len);
+
+	if ( !request_line )
 	{
-		bufferevent_free(bev);
+		LOG(LOG_LEVEL_FATAL, "CRLF error!");
+		exit(-1);
 	}
+	get_request_line_md5((unsigned char *)request_line, str);
+	free(request_line);
 }
 
-void event_cb(struct bufferevent * bev, short events, void * ptr)
+
+void read_client_cb(struct bufferevent * bev, void * ptr)
 {
-	struct bufferevent *partner = ptr;
-
-	if ( events & ( BEV_EVENT_EOF | BEV_EVENT_ERROR ) )
+	if ( !bev )
 	{
-		if ( events & BEV_EVENT_ERROR )
-		{
-			perror("connection error");
-			exit(-1);
-		}
-
-		if ( partner )
-		{
-			/* Flush all pending data */
-			read_cb(bev, ptr);
-
-			if ( evbuffer_get_length( bufferevent_get_output(partner) ) )
-			{
-				/* We still have to flush data from the other
-				** side, but when that's done, close the other
-				** side.
-				*/
-				bufferevent_setcb(partner, NULL, close_on_finished_writecb, event_cb, NULL);
-				bufferevent_disable(partner, EV_READ);
-			}
-			else
-			{
-				/* We have nothing left to say to the other
-				** side; close it. */
-				bufferevent_free(partner);
-			}
-		}
-		bufferevent_free(bev);
+		LOG(LOG_LEVEL_FATAL, "bev == NULL!");
+		exit(-1);
 	}
-}
 
-void drained_write_cb(struct bufferevent * bev, void * ptr)
-{
-	struct bufferevent *partner = ptr;
-
-	/* We were choking the other side until we drained our outbuf a bit.
-	** Now it seems drained. */
-	bufferevent_setcb(bev, read_cb, NULL, event_cb, partner);
-	bufferevent_setwatermark(bev, EV_WRITE, 0, 0);
-	if ( partner )
+	struct evbuffer * evbuff = bufferevent_get_input(bev);
+	struct evbuffer_ptr pos = evbuffer_search(evbuff, "\r\n\r\n", 4, NULL);
+	if ( pos.pos == -1 )
 	{
-		bufferevent_enable(partner, EV_READ);
-	}
-}
-
-void read_cb(struct bufferevent * bev, void * ptr)
-{
-	struct bufferevent * partner = (struct bufferevent *)ptr;
-	struct evbuffer *src, *dst;
-	size_t len;
-	src = bufferevent_get_input(bev);
-	len = evbuffer_get_length(src);
-	if ( !partner )
-	{
-		evbuffer_drain(src, len);
+		/* Not finished yet. */
 		return ;
 	}
-	dst = bufferevent_get_output(partner);
-	evbuffer_add_buffer(dst, src);
 
-	if ( evbuffer_get_length(dst) >= 4096 )
+	char str[128] = {0};
+	strcpy(str, g_cache_dir);
+	int len = strlen(str);
+	int fd = 0;
+	cache_check(bev, &str[len]);
+	if ( ( fd = open(str, O_RDONLY) ) > 0 )
 	{
-		/* We're giving the other side data faster than it can
-		** pass it on.  Stop reading here until we have drained the
-		** other side to MAX_OUTPUT/2 bytes. */
-		bufferevent_setcb(partner, read_cb, drained_write_cb, event_cb, bev);
-		bufferevent_setwatermark(partner, EV_WRITE, 2048, 4096);
-		bufferevent_disable(bev, EV_READ);
+		cache_hit(bev, fd);
+	}
+	else
+	{
+		/* Can not open file, create new file. */
+		fd = open(str, O_WRONLY | O_CREAT | O_NONBLOCK, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+		if ( fd <= 0 )
+		{
+			LOG(LOG_LEVEL_FATAL, "Create cache file error.");
+			exit(-1);
+		}
+		cache_miss(bev, fd);
 	}
 }
 
-void write_cb(struct bufferevent * bev, void * prt)
+void event_client_cb(struct bufferevent * bev, short events, void * ptr)
 {
-	;
+	if ( !ptr )
+	{
+		LOG(LOG_LEVEL_FATAL, "ptr == NULL!");
+		exit(-1);
+	}
+	if ( events | ( BEV_EVENT_EOF | BEV_EVENT_ERROR ) )
+	{
+		if ( events | BEV_EVENT_EOF )
+		{
+			LOG(LOG_LEVEL_INFO, "%s called.\n", __func__);
+			//bufferevent_free(bev);
+			//bufferevent_enable(bev, 0);
+		}
+		/* No implamation here. */
+	}
+	return ;
 }
+
 
 void accept_cb(struct evconnlistener * listener, evutil_socket_t sock, struct sockaddr * addr, int len, void * ptr)
 {
 	struct bufferevent * bev_in = NULL;
-	struct bufferevent * bev_out = NULL;
 
 	bev_in = bufferevent_socket_new(g_base, sock, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	if ( !bev_in )
@@ -121,32 +114,17 @@ void accept_cb(struct evconnlistener * listener, evutil_socket_t sock, struct so
 		LOG(LOG_LEVEL_FATAL, "Create bufferevent failed.");
 		exit(-1);
 	}
-	bev_out = bufferevent_socket_new(g_base, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-	if ( !bev_out )
-	{
-		LOG(LOG_LEVEL_FATAL, "Create bufferevent failed.");
-		bufferevent_free(bev_in);
-		exit(-1);
-	}
-	if ( bufferevent_socket_connect(bev_out, (struct sockaddr * )&g_remote_addr, sizeof(struct sockaddr_in)) < 0 )
-	{
-		/* Error */
-		perror("Connect to remote server error.");
-		exit(-1);
-	}
 
-	bufferevent_setcb(bev_in, read_cb, NULL, event_cb, bev_out);
-	bufferevent_setcb(bev_out, read_cb, NULL, event_cb, bev_in);
+	bufferevent_setcb(bev_in, read_client_cb, NULL, event_client_cb, NULL);
 
-	bufferevent_enable(bev_in, EV_READ | EV_WRITE);
-	bufferevent_enable(bev_out, EV_READ | EV_WRITE);
+	bufferevent_enable(bev_in, EV_READ);
 
 	return ;
 }
 
 void proxy_init()
 {
-	g_listener = evconnlistener_new_bind(g_base, accept_cb, NULL, LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE | LEV_OPT_THREADSAFE, -1, (struct sockaddr*)&g_local_addr, sizeof(struct sockaddr_in));
+	g_listener = evconnlistener_new_bind(g_base, accept_cb, NULL, LEV_OPT_REUSEABLE, -1, (struct sockaddr*)&g_local_addr, sizeof(struct sockaddr_in));
 	if ( !g_listener )
 	{
 		LOG(LOG_LEVEL_FATAL, "Initial g_listener failed.");
