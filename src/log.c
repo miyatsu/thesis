@@ -79,7 +79,7 @@ void log_init(char * buff, int len)
 	{
 		path[i] = buff[i];
 	}
-	g_log_fd = open(path, O_WRONLY);
+	g_log_fd = open(path, O_WRONLY | O_APPEND);
 	if ( g_log_fd <= 0 )
 	{
 		printf("Can not open file %s!\n", path);
