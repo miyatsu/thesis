@@ -81,13 +81,17 @@ void read_from_origin_cb(struct bufferevent * bev, void * ptr)
 	}
 	struct evbuffer * origin = bufferevent_get_input(bev);
 	struct evbuffer * client = bufferevent_get_output(arg->bev);
+	size_t str_len = evbuffer_get_length(origin);
+	char * str = malloc(str_len);
+	evbuffer_copyout(origin, str, str_len);
 	evbuffer_add_buffer(client, origin);
+	for ( int i = 0, n = 0; i < str_len; i += n )
+	{
+		n = write(arg->fd, str, str_len);
+	}
+	free(str);
 }
 
-void write_into_origin_cb(struct bufferevent * bev, void * ptr)
-{
-	printf("%s\n", __func__);
-}
 
 void event_of_origin_cb(struct bufferevent * bev, short events, void * ptr)
 {
@@ -129,9 +133,8 @@ void cache_miss(struct bufferevent * bev, int fd)
 	arg->bev = bev;
 	arg->fd = fd;
 
-	bufferevent_setcb(bev_out, read_from_origin_cb, write_into_origin_cb, event_of_origin_cb, arg);
+	bufferevent_setcb(bev_out, read_from_origin_cb, NULL, event_of_origin_cb, arg);
 	bufferevent_enable(bev_out, EV_READ | EV_WRITE);
-	bufferevent_setwatermark(bev_out, EV_WRITE, 0, 0);
 
 	struct evbuffer * src = bufferevent_get_input(bev);
 	struct evbuffer * dst = bufferevent_get_output(bev_out);
