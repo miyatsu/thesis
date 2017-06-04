@@ -30,7 +30,6 @@ static pthread_mutex_t	g_log_mutex;
 
 void log_cb(int fd, short what, void * arg)
 {
-	printf("log_cb called.\n");
 	if ( !arg )
 	{
 		perror("In func log_cb, arg == NULL!\n");
