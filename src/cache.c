@@ -44,6 +44,7 @@ void get_request_line_md5(unsigned char *encrypt, char *hexstr)
 
 void send_cache_to_client(int fd, short events, void * ptr)
 {
+	LOG(LOG_LEVEL_INFO, "Send cached data to client.\n");
 	if ( events & EV_READ )
 	{
 		struct evbuffer * buff = bufferevent_get_output((struct bufferevent *)ptr);
@@ -60,6 +61,7 @@ void send_cache_to_client(int fd, short events, void * ptr)
 
 void cache_hit(struct bufferevent * bev, int fd)
 {
+	LOG(LOG_LEVEL_INFO, "Cache hit.\n");
 	fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
 	event_base_once(g_base, fd, EV_READ, send_cache_to_client, bev, NULL);
 	return ;
@@ -73,6 +75,7 @@ typedef struct
 
 void read_from_origin_cb(struct bufferevent * bev, void * ptr)
 {
+	LOG(LOG_LEVEL_INFO, "Receive data from origin server.\n");
 	origin_arg_t * arg = ptr;
 	if ( !arg )
 	{
@@ -84,7 +87,9 @@ void read_from_origin_cb(struct bufferevent * bev, void * ptr)
 	size_t str_len = evbuffer_get_length(origin);
 	char * str = malloc(str_len);
 	evbuffer_copyout(origin, str, str_len);
+	LOG(LOG_LEVEL_INFO, "Write data into cache file.\n");
 	evbuffer_add_buffer(client, origin);
+	LOG(LOG_LEVEL_INFO, "Send uncached data to client.\n");
 	for ( int i = 0, n = 0; i < str_len; i += n )
 	{
 		n = write(arg->fd, str, str_len);
@@ -109,6 +114,7 @@ void event_of_origin_cb(struct bufferevent * bev, short events, void * ptr)
 
 void cache_miss(struct bufferevent * bev, int fd)
 {
+	LOG(LOG_LEVEL_INFO, "Cache miss.\n");
 	struct bufferevent * bev_out = bufferevent_socket_new(g_base, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	if ( !bev_out )
 	{
